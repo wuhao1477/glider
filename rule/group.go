@@ -3,6 +3,7 @@ package rule
 import (
 	"errors"
 	"hash/fnv"
+	"math/rand"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -15,6 +16,11 @@ import (
 	"github.com/nadoo/glider/pkg/log"
 	"github.com/nadoo/glider/proxy"
 )
+
+// 在程序初始化时设置随机数种子
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 // forwarder slice orderd by priority.
 type priSlice []*Forwarder
@@ -88,6 +94,9 @@ func newFwdrGroup(name string, fwdrs []*Forwarder, c *Strategy) *FwdrGroup {
 		case "dh":
 			p.next = p.scheduleDH
 			log.F("[strategy] %s: %d forwarders forward in destination hashing mode.", name, count)
+		case "random":
+			p.next = p.scheduleRandom
+			log.F("[strategy] %s: %d forwarders forward in random selection mode.", name, count)
 		default:
 			p.next = p.scheduleRR
 			log.F("[strategy] %s: not supported forward mode '%s', use round robin mode for %d forwarders.", name, c.Strategy, count)
@@ -315,4 +324,14 @@ func (p *FwdrGroup) scheduleDH(dstAddr string) *Forwarder {
 	fnv1a := fnv.New32a()
 	fnv1a.Write([]byte(dstAddr))
 	return p.avail[fnv1a.Sum32()%uint32(len(p.avail))]
+}
+
+// Random Selection.
+func (p *FwdrGroup) scheduleRandom(dstAddr string) *Forwarder {
+	n := len(p.avail)
+	if n == 0 {
+		return nil // 或者其他错误处理
+	}
+	randomIndex := rand.Intn(n)
+	return p.avail[randomIndex]
 }
